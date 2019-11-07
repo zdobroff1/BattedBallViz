@@ -1,0 +1,825 @@
+<!doctype html>
+<meta charset="utf-8">
+<html>
+<head>
+    <style>
+        .circle {
+            fill: orange;
+        }
+		.tooltip {
+			  position: absolute;
+			  width: 195px;
+			  height: 175px;
+			  pointer-events: none;
+			  color: white;
+			  background: black;
+			  font-family: Arial;
+			  font-size: 12px;
+			  font-weight: bold;
+			}
+    </style>
+    <script src="https://d3js.org/d3.v4.min.js"></script>
+	<script src="https://unpkg.com/d3-simple-slider"></script>
+<body>
+Batter: 
+<select action="/viewMessages", name="hitter", method="post", id="hitter">
+<option value="All">All</option>
+</select>
+Pitcher: 
+<select action="/viewMessages", name="pitcher", method="post", id="pitcher">
+<option value="All">All</option>
+</select>
+Result: 
+<select action="/viewMessages", name="results", method="post", id="results">
+<option value="All">All</option>
+</select>
+Pitch Type: 
+<select action="/viewMessages", name="pitchtypes", method="post", id="pitchtypes">
+<option value="All">All</option>
+</select>
+Color by:
+<select action="/viewMessages", name="coloring", method="post", id="coloring">
+<option value="Result">Result</option>
+<option value="Pitchtype">Pitch Type</option>
+<option value="Exitvelo">Exit Velocity</option>
+<option value="Launchangle">Launch Angle</option>
+<option value="Hangtime">Hang Time</option>
+</select>
+<input id="submit" type="button" value="Submit" onclick="getValues();" />
+<script>
+
+	var margin = {top: 20, right: 20, bottom: 70, left: 90},
+    width = 700 - margin.left - margin.right,
+    height = 300 - margin.top - margin.bottom;
+
+	var svg = d3.select("body").append("svg")
+		.attr("width", (width + margin.left + margin.right) * 2)
+		.attr("height", (height + margin.top + margin.bottom) * 3)
+	  .append("g")
+		.attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+
+	  svg.append('image')
+	  .attr('xlink:href','BattedBallData/14.svg')
+	  .attr('height', '800')
+	  .attr('width', '800');
+	  
+	  svg.append('image')
+	  .attr('xlink:href','BattedBallData/Polar-graph.png')
+	  .attr('x', '837')
+	  .attr('y', '35')
+	  .attr('height', '500')
+	  .attr('width', '500');
+		
+	var tooltip = d3.select("body").append("div")
+			.attr("class", "tooltip")
+			.style("opacity", 0);
+				
+    var g = svg.append("g")
+               .attr("transform", "translate(" + 100 + "," + 100 + ")");
+	
+	var minExitVelo = 0; 
+	var maxExitVelo = 200;
+	
+	var minLaunchAngle = -100; 
+	var maxLaunchAngle = 110;
+	
+	var kZone = g.append("rect")
+			.attr("x", 957)
+			.attr("y", 475)
+			.attr("width", 85)
+			.attr("height", 100)
+			.attr("opacity", .3);
+			
+	var battedBallText = g.append("text")
+		.attr("x", -150)
+		.attr("y", -50)
+		.text("Batted ball locations (Rogers Centre):");
+	
+	var radialText = g.append("text")
+		.attr("x", 800)
+		.attr("y", -50)
+		.text("Radial Chart (120 mph max):");
+		
+	var kZoneText = g.append("text")
+		.attr("x", 800)
+		.attr("y", 440)
+		.text("Strike Zone (approx.):");
+	
+	var dataHolder;		  
+    d3.csv("BattedBallData/ALWestBattedBalls2017.csv", function(error, data) {
+        if (error) {
+            throw error;
+        }
+		dataHolder = data;
+
+		var batters = [];
+		var pitchers = [];
+		var results = [];
+		var pitchtypes = [];		
+		var exitVelos = [];
+		var launchAngles = [];
+		
+		var length = data.length;
+		for (var i = 0; i < length; i++) {
+			batters.push(data[i].battername);
+			pitchers.push(data[i].pitchername);
+			results.push(data[i].result_type);
+			pitchtypes.push(data[i].pitch_type);
+			exitVelos.push(Number(data[i].launch_speed));
+			launchAngles.push(Number(data[i].launch_vert_ang));
+		}
+		let uniqueBatters = [...new Set(batters)].sort();
+		let uniquePitchers = [...new Set(pitchers)].sort();
+		let uniqueResults = [...new Set(results)].sort();
+		let uniquePitchtypes = [...new Set(pitchtypes)].sort();
+		
+		var hitterSelect = document.getElementById("hitter");
+		for(index in uniqueBatters) {
+			hitterSelect.options[hitterSelect.options.length] = new Option(uniqueBatters[index], index);
+		}
+		var pitcherSelect = document.getElementById("pitcher");
+		for(index in uniquePitchers) {
+			pitcherSelect.options[pitcherSelect.options.length] = new Option(uniquePitchers[index], index);
+		}
+		var resultsSelect = document.getElementById("results");
+		for(index in uniqueResults) {
+			resultsSelect.options[resultsSelect.options.length] = new Option(uniqueResults[index], index);
+		}
+		var pitchtypesSelect = document.getElementById("pitchtypes");
+		for(index in uniquePitchtypes) {
+			pitchtypesSelect.options[pitchtypesSelect.options.length] = new Option(uniquePitchtypes[index], index);
+		}
+		var initHitter = 'Trout, Mike';
+		var initPitcher = 'All';
+		var initResult = 'All';
+		var initPitchtype = 'All';
+		var initColoring = 'Result';
+		
+		minExitVelo = d3.min(exitVelos);
+		maxExitVelo = d3.max(exitVelos);
+		
+		minLaunchAngle = d3.min(launchAngles);
+		maxLaunchAngle = d3.max(launchAngles);
+		
+		var sliderRange1 = d3
+			.sliderBottom()
+			.min(minExitVelo)
+			.max(maxExitVelo)
+			.width(300)
+			.tickFormat(d3.format('.2f'))
+			.ticks(5)
+			.default([minExitVelo, maxExitVelo])
+			.fill('#2196f3')
+			.on('onchange', val => {
+			  d3.select('p#value-range').text("Exit Velocity: " + val.map(d3.format('.2f')).join(' - ') + ' mph');
+			  minExitVelo = val[0];
+			  maxExitVelo = val[1];
+			});
+		
+		  var gRange1 = d3
+			.select('div#slider-range')
+			.append('svg')
+			.attr('width', 500)
+			.attr('height', 100)
+			.append('g')
+			.attr('transform', 'translate(30,30)');
+
+		  gRange1.call(sliderRange1);
+
+		  d3.select('p#value-range').text("Exit Velocity: " + 
+			sliderRange1
+			  .value()
+			  .map(d3.format('.2f') )
+			  .join(' - ') + " mph"
+		  );
+		  
+		  var sliderRange2 = d3
+			.sliderBottom()
+			.min(minLaunchAngle)
+			.max(maxLaunchAngle)
+			.width(300)
+			.tickFormat(d3.format('.2f'))
+			.ticks(5)
+			.default([minLaunchAngle, maxLaunchAngle])
+			.fill('#2196f3')
+			.on('onchange', val => {
+			  d3.select('p#value-range-2').text("Launch Angle: " + val.map(d3.format('.2f')).join(' - ') + "°");
+			  minLaunchAngle = val[0];
+			  maxLaunchAngle = val[1];
+			});
+		
+		  var gRange2 = d3
+			.select('div#slider-range-2')
+			.append('svg')
+			.attr('width', 500)
+			.attr('height', 100)
+			.append('g')
+			.attr('transform', 'translate(30,30)');
+
+		  gRange2.call(sliderRange2);
+
+		  d3.select('p#value-range-2').text("Launch Angle: " + 
+			sliderRange2
+			  .value()
+			  .map(d3.format('.2f') )
+			  .join(' - ') + "°"
+		  );
+		  
+		createChart(data, initHitter, initPitcher, initResult, initPitchtype, initColoring);
+	}); 
+	
+	function getValues(){
+		var currentHitter = document.getElementById("hitter");
+		var currentPitcher = document.getElementById("pitcher");
+		var currentResult = document.getElementById("results");
+		var currentPitchtype = document.getElementById("pitchtypes");
+		var currentColoring = document.getElementById("coloring");
+		var strHitter = currentHitter.options[currentHitter.selectedIndex].text;
+		var strPitcher = currentPitcher.options[currentPitcher.selectedIndex].text;
+		var strResult = currentResult.options[currentResult.selectedIndex].text;
+		var strPitchtype = currentPitchtype.options[currentPitchtype.selectedIndex].text;
+		var strColoring = currentColoring.options[currentColoring.selectedIndex].text;
+		createChart(dataHolder, strHitter, strPitcher, strResult, strPitchtype, strColoring);
+	}
+	
+	function createChart(data, hitter, pitcher, result, pitchtype, coloring){
+		g.selectAll("circle").remove()
+		 var hitterHolder = hitter;
+		 var pitcherHolder = pitcher;
+		 var resultHolder = result;
+		 var pitchtypeHolder = pitchtype;
+		 var coloringHolder = coloring;
+         var circle = g.selectAll(".circle") 
+		 .data(data.filter(function(d){ 
+			 if (hitter == 'All'){
+				hitterHolder = d.battername;
+			 }
+			 if (pitcher == 'All'){
+				pitcherHolder = d.pitchername;
+			 }
+			if (result == 'All'){
+				resultHolder = d.result_type;
+			 }
+			if (pitchtype == 'All'){
+				pitchtypeHolder = d.pitch_type;
+			 }
+			 return d.battername == hitterHolder && d.pitchername == pitcherHolder && d.result_type == resultHolder && d.pitch_type == pitchtypeHolder && 
+				Number(d.launch_speed) >= minExitVelo && Number(d.launch_speed) < maxExitVelo && 
+				Number(d.launch_vert_ang) >= minLaunchAngle && Number(d.launch_vert_ang) < maxLaunchAngle;
+			 }))
+         .enter().append("circle")
+			 .attr("r", function(d) { return 3; })
+			 .attr("cx", function(d) { return 300 + d.landing_location_x * 1.375; })
+			 .attr("cy", function(d) { return 550 - d.landing_location_y * 1.375; })
+			 .attr("opacity", .7)
+			.on("mouseover",function(d, i){
+				d3.select(this).style("opacity", .9);
+				tooltip.transition()
+				   .duration(200)
+				   .style("opacity", .9);
+				tooltip.html("&nbsp;&nbsp;Batter: " + d.battername + 
+					"<br/> &nbsp;&nbsp;Pitcher: " + d.pitchername +
+					"<br/> &nbsp;&nbsp;Result: " + d.result_type + 
+					"<br/> &nbsp;&nbsp;Count: " + d.balls + "-" + d.strikes +  
+					"<br/> &nbsp;&nbsp;Pitch Type: "  + d.pitch_type + 
+					"<br/> &nbsp;&nbsp;Pitch Speed: " + Number(d.pitch_speed).toFixed(2) + "&nbsp;mph" + 
+					"<br/> &nbsp;&nbsp;Exit Velo: "  + Number(d.launch_speed).toFixed(2) + "&nbsp;mph" +
+					"<br/> &nbsp;&nbsp;Launch Angle: " + Number(d.launch_vert_ang).toFixed(2) + "&deg;" + 
+					"<br/> &nbsp;&nbsp;Distance: "  + Math.sqrt(d.landing_location_x * d.landing_location_x + d.landing_location_y * d.landing_location_y).toFixed(2)  + "&nbsp;feet" +
+					"<br/> &nbsp;&nbsp;Hang Time: "  + Number(d.hang_time).toFixed(2) + "&nbsp;sec" + 
+					"<br/> &nbsp;&nbsp;Park: " + d.park + 
+					"<br/> &nbsp;&nbsp;Date: " + d.date)
+				   .style("left", (d3.event.pageX + 5) + "px")
+				   .style("top", (d3.event.pageY - 28) + "px");
+			})
+			.on("mouseout", function(d) {
+				d3.select(this).style("opacity", .7);
+				 tooltip.transition()
+					   .duration(500)
+					   .style("opacity", 0);
+			  })
+			 .style("fill",function(d){
+				if (coloring == "Result"){
+				   if (d.result_type == "single" || d.result_type == "double" || d.result_type == "triple" || d.result_type == "home_run"){
+					 return "green"
+				   }
+				   else if (d.result_type == "field_error" || d.result_type == "sac_fly" || d.result_type == "bunt" || d.result_type == "sac_bunt" || d.result_type == "catcher_interf" 
+					|| d.result_type == "fielders_choice" || d.result_type == "fielders_choice_out"){
+					return "blue"
+				   }
+				   else if (d.result_type == "field_out" || d.result_type == "force_out" || d.result_type == "double_play" || d.result_type == "double_play" || 
+					d.result_type == "grounded_into_double_play" || d.result_type == "sac_fly_double_play" || d.result_type == "double_play"){
+					return "red"
+				   }
+					else {
+					   return "black"
+					}
+				}
+				else if (coloring == "Pitch Type"){
+					if(d.pitch_type == "FT"){
+						return "pink"
+					}
+					else if (d.pitch_type == "FF"){
+						return "red"
+					}
+					else if (d.pitch_type == "FS"){
+						return "orange"
+					}
+					else if (d.pitch_type == "FC"){
+						return "yellow"
+					}
+					else if (d.pitch_type == "SI"){
+						return "lightgreen"
+					}
+					else if (d.pitch_type == "SL"){
+						return "green"
+					}
+					else if (d.pitch_type == "CU"){
+						return "lightblue"
+					}
+					else if (d.pitch_type == "CH"){
+						return "blue"
+					}
+					else if (d.pitch_type == "KC"){
+						return "purple"
+					}
+					else if (d.pitch_type == "IN"){
+						return "grey"
+					}
+					else{
+						return "black"
+					}
+				}
+				else if (coloring == "Exit Velocity"){
+					if (Number(d.launch_speed) < 50){
+						return "RGB(0,255,0)"
+					}
+					else if (Number(d.launch_speed) >= 50 && Number(d.launch_speed) < 60){
+						return "RGB(70,0,175)"
+					}
+					else if (Number(d.launch_speed) >= 60 && Number(d.launch_speed) < 70){
+						return "RGB(105,0,140)"
+					}
+					else if (Number(d.launch_speed) >= 70 && Number(d.launch_speed) < 80){
+						return "RGB(140,0,105)"
+					}
+					else if (Number(d.launch_speed) >= 80 && Number(d.launch_speed) < 90){
+						return "RGB(175,0,70)"
+					}
+					else if (Number(d.launch_speed) >= 90 && Number(d.launch_speed) < 100){
+						return "RGB(210,0,35)"
+					}
+					else if (Number(d.launch_speed) >= 100 && Number(d.launch_speed) < 110){
+						return "RGB(255,0,0)"
+					}
+					else if (Number(d.launch_speed) >= 110){
+						return "RGB(0,0,0)"
+					}
+					else {
+						return "grey"
+					}
+				}
+				else if (coloring == "Launch Angle"){
+					if (Number(d.launch_vert_ang) < -60){
+						return "RGB(0,255,0)"
+					}
+					else if (Number(d.launch_vert_ang) >= -60 && Number(d.launch_vert_ang) < -30){
+						return "RGB(0,0,255)"
+					}
+					else if (Number(d.launch_vert_ang) >= -30 && Number(d.launch_vert_ang) < 0){
+						return "RGB(85,0,170)"
+					}
+					else if (Number(d.launch_vert_ang) >= 0 && Number(d.launch_vert_ang) < 30){
+						return "RGB(170,0,85)"
+					}
+					else if (Number(d.launch_vert_ang) >= 30 && Number(d.launch_vert_ang) < 60){
+						return "RGB(255,0,0)"
+					}
+					else if (Number(d.launch_vert_ang) >= 60){
+						return "RGB(0,0,0)"
+					}
+					else {
+						return "grey"
+					}			
+				}
+				else if (coloring == "Hang Time"){
+					if (Number(d.hang_time) < 1){
+						return "RGB(0,128,0)"
+					}
+					else if (Number(d.hang_time) >= 1 && Number(d.hang_time) < 2){
+						return "RGB(0,0,255)"
+					}
+					else if (Number(d.hang_time) >= 2 && Number(d.hang_time) < 3){
+						return "RGB(50,0,200)"
+					}
+					else if (Number(d.hang_time) >= 3 && Number(d.hang_time) < 4){
+						return "RGB(100,0,150)"
+					}
+					else if (Number(d.hang_time) >= 4 && Number(d.hang_time) < 5){
+						return "RGB(150,0,100)"
+					}
+					else if (Number(d.hang_time) >= 5 && Number(d.hang_time) < 6){
+						return "RGB(200,0,50)"
+					}
+					else if (Number(d.hang_time) >= 6 && Number(d.hang_time) < 7){
+						return "RGB(255,0,0)"
+					}
+					else if (Number(d.hang_time) >= 7){
+						return "RGB(0,0,0)"
+					}
+					else {
+						return "grey"
+					}
+				}
+		});
+
+		//////////K-zone begin
+			var circle2 = g.selectAll(".circle") 
+				.data(data.filter(function(d){ 
+				 if (hitter == 'All'){
+					hitterHolder = d.battername;
+				 }
+				 if (pitcher == 'All'){
+					pitcherHolder = d.pitchername;
+				 }
+				if (result == 'All'){
+					resultHolder = d.result_type;
+				 }
+				if (pitchtype == 'All'){
+					pitchtypeHolder = d.pitch_type;
+				 }
+				 return d.battername == hitterHolder && d.pitchername == pitcherHolder && d.result_type == resultHolder && d.pitch_type == pitchtypeHolder && 
+					Number(d.launch_speed) >= minExitVelo && Number(d.launch_speed) < maxExitVelo && 
+					Number(d.launch_vert_ang) >= minLaunchAngle && Number(d.launch_vert_ang) < maxLaunchAngle;
+				 }))
+			.enter().append("circle")
+				.attr("r", function(d) { return 3; })
+				 .attr("cx", function(d) { return 1000 + d.zone_location_x * 50; })
+				 .attr("cy", function(d) { return 650 - d.zone_location_z * 50; })
+				 .attr("opacity", .7)
+				 .on("mouseover",function(d, i){
+				d3.select(this).style("opacity", .9);
+				tooltip.transition()
+				   .duration(200)
+				   .style("opacity", .9);
+				tooltip.html("&nbsp;&nbsp;Batter: " + d.battername + 
+					"<br/> &nbsp;&nbsp;Pitcher: " + d.pitchername +
+					"<br/> &nbsp;&nbsp;Result: " + d.result_type + 
+					"<br/> &nbsp;&nbsp;Count: " + d.balls + "-" + d.strikes +  
+					"<br/> &nbsp;&nbsp;Pitch Type: "  + d.pitch_type + 
+					"<br/> &nbsp;&nbsp;Pitch Speed: " + Number(d.pitch_speed).toFixed(2) + "&nbsp;mph" + 
+					"<br/> &nbsp;&nbsp;Zone X loc: " + Number(d.zone_location_x).toFixed(2) + "&nbsp;ft" + 
+					"<br/> &nbsp;&nbsp;Zone Z loc: " + Number(d.zone_location_z).toFixed(2) + "&nbsp;ft" + 
+					"<br/> &nbsp;&nbsp;Exit Velo: "  + Number(d.launch_speed).toFixed(2) + "&nbsp;mph" +
+					"<br/> &nbsp;&nbsp;Launch Angle: " + Number(d.launch_vert_ang).toFixed(2) + "&deg;" + 
+					"<br/> &nbsp;&nbsp;Distance: "  + Math.sqrt(d.landing_location_x * d.landing_location_x + d.landing_location_y * d.landing_location_y).toFixed(2)  + "&nbsp;feet" +
+					"<br/> &nbsp;&nbsp;Hang Time: "  + Number(d.hang_time).toFixed(2) + "&nbsp;sec" + 
+					"<br/> &nbsp;&nbsp;Park: " + d.park + 
+					"<br/> &nbsp;&nbsp;Date: " + d.date)
+				   .style("left", (d3.event.pageX + 5) + "px")
+				   .style("top", (d3.event.pageY - 28) + "px");
+			})
+			.on("mouseout", function(d) {
+				d3.select(this).style("opacity", .7);
+				 tooltip.transition()
+					   .duration(500)
+					   .style("opacity", 0);
+			  })
+			 .style("fill",function(d){
+				if (coloring == "Result"){
+				   if (d.result_type == "single" || d.result_type == "double" || d.result_type == "triple" || d.result_type == "home_run"){
+					 return "green"
+				   }
+				   else if (d.result_type == "field_error" || d.result_type == "sac_fly" || d.result_type == "bunt" || d.result_type == "sac_bunt" || d.result_type == "catcher_interf" 
+					|| d.result_type == "fielders_choice" || d.result_type == "fielders_choice_out"){
+					return "blue"
+				   }
+				   else if (d.result_type == "field_out" || d.result_type == "force_out" || d.result_type == "double_play" || d.result_type == "double_play" || 
+					d.result_type == "grounded_into_double_play" || d.result_type == "sac_fly_double_play" || d.result_type == "double_play"){
+					return "red"
+				   }
+					else {
+					   return "black"
+					}
+				}
+				else if (coloring == "Pitch Type"){
+					if(d.pitch_type == "FT"){
+						return "pink"
+					}
+					else if (d.pitch_type == "FF"){
+						return "red"
+					}
+					else if (d.pitch_type == "FS"){
+						return "orange"
+					}
+					else if (d.pitch_type == "FC"){
+						return "yellow"
+					}
+					else if (d.pitch_type == "SI"){
+						return "lightgreen"
+					}
+					else if (d.pitch_type == "SL"){
+						return "green"
+					}
+					else if (d.pitch_type == "CU"){
+						return "lightblue"
+					}
+					else if (d.pitch_type == "CH"){
+						return "blue"
+					}
+					else if (d.pitch_type == "KC"){
+						return "purple"
+					}
+					else if (d.pitch_type == "IN"){
+						return "grey"
+					}
+					else{
+						return "black"
+					}
+				}
+				else if (coloring == "Exit Velocity"){
+					if (Number(d.launch_speed) < 50){
+						return "RGB(0,255,0)"
+					}
+					else if (Number(d.launch_speed) >= 50 && Number(d.launch_speed) < 60){
+						return "RGB(70,0,175)"
+					}
+					else if (Number(d.launch_speed) >= 60 && Number(d.launch_speed) < 70){
+						return "RGB(105,0,140)"
+					}
+					else if (Number(d.launch_speed) >= 70 && Number(d.launch_speed) < 80){
+						return "RGB(140,0,105)"
+					}
+					else if (Number(d.launch_speed) >= 80 && Number(d.launch_speed) < 90){
+						return "RGB(175,0,70)"
+					}
+					else if (Number(d.launch_speed) >= 90 && Number(d.launch_speed) < 100){
+						return "RGB(210,0,35)"
+					}
+					else if (Number(d.launch_speed) >= 100 && Number(d.launch_speed) < 110){
+						return "RGB(255,0,0)"
+					}
+					else if (Number(d.launch_speed) >= 110){
+						return "RGB(0,0,0)"
+					}
+					else {
+						return "grey"
+					}
+				}
+				else if (coloring == "Launch Angle"){
+					if (Number(d.launch_vert_ang) < -60){
+						return "RGB(0,255,0)"
+					}
+					else if (Number(d.launch_vert_ang) >= -60 && Number(d.launch_vert_ang) < -30){
+						return "RGB(0,0,255)"
+					}
+					else if (Number(d.launch_vert_ang) >= -30 && Number(d.launch_vert_ang) < 0){
+						return "RGB(85,0,170)"
+					}
+					else if (Number(d.launch_vert_ang) >= 0 && Number(d.launch_vert_ang) < 30){
+						return "RGB(170,0,85)"
+					}
+					else if (Number(d.launch_vert_ang) >= 30 && Number(d.launch_vert_ang) < 60){
+						return "RGB(255,0,0)"
+					}
+					else if (Number(d.launch_vert_ang) >= 60){
+						return "RGB(0,0,0)"
+					}
+					else {
+						return "grey"
+					}			
+				}
+				else if (coloring == "Hang Time"){
+					if (Number(d.hang_time) < 1){
+						return "RGB(0,128,0)"
+					}
+					else if (Number(d.hang_time) >= 1 && Number(d.hang_time) < 2){
+						return "RGB(0,0,255)"
+					}
+					else if (Number(d.hang_time) >= 2 && Number(d.hang_time) < 3){
+						return "RGB(50,0,200)"
+					}
+					else if (Number(d.hang_time) >= 3 && Number(d.hang_time) < 4){
+						return "RGB(100,0,150)"
+					}
+					else if (Number(d.hang_time) >= 4 && Number(d.hang_time) < 5){
+						return "RGB(150,0,100)"
+					}
+					else if (Number(d.hang_time) >= 5 && Number(d.hang_time) < 6){
+						return "RGB(200,0,50)"
+					}
+					else if (Number(d.hang_time) >= 6 && Number(d.hang_time) < 7){
+						return "RGB(255,0,0)"
+					}
+					else if (Number(d.hang_time) >= 7){
+						return "RGB(0,0,0)"
+					}
+					else {
+						return "grey"
+					}
+				}
+			});
+			////////K-zone end
+			////////Radial begin
+			var circle3 = g.selectAll(".circle") 
+				.data(data.filter(function(d){ 
+				 if (hitter == 'All'){
+					hitterHolder = d.battername;
+				 }
+				 if (pitcher == 'All'){
+					pitcherHolder = d.pitchername;
+				 }
+				if (result == 'All'){
+					resultHolder = d.result_type;
+				 }
+				if (pitchtype == 'All'){
+					pitchtypeHolder = d.pitch_type;
+				 }
+				 return d.battername == hitterHolder && d.pitchername == pitcherHolder && d.result_type == resultHolder && d.pitch_type == pitchtypeHolder && 
+					Number(d.launch_speed) >= minExitVelo && Number(d.launch_speed) < maxExitVelo && 
+					Number(d.launch_vert_ang) >= minLaunchAngle && Number(d.launch_vert_ang) < maxLaunchAngle;
+				 }))
+			.enter().append("circle")
+				.attr("r", function(d) { return 3; })
+				 .attr("cx", function(d) { return 1000 + d.launch_speed * Math.cos(d.launch_vert_ang * (Math.PI / 180)) * 1.5 })
+				 .attr("cy", function(d) { return 175 - d.launch_speed * Math.sin(d.launch_vert_ang * (Math.PI / 180)) * 1.5 })
+				 .attr("opacity", .7)
+				 .on("mouseover",function(d, i){
+				d3.select(this).style("opacity", .9);
+				tooltip.transition()
+				   .duration(200)
+				   .style("opacity", .9);
+				tooltip.html("&nbsp;&nbsp;Batter: " + d.battername + 
+					"<br/> &nbsp;&nbsp;Pitcher: " + d.pitchername +
+					"<br/> &nbsp;&nbsp;Result: " + d.result_type + 
+					"<br/> &nbsp;&nbsp;Count: " + d.balls + "-" + d.strikes +  
+					"<br/> &nbsp;&nbsp;Pitch Type: "  + d.pitch_type + 
+					"<br/> &nbsp;&nbsp;Pitch Speed: " + Number(d.pitch_speed).toFixed(2) + "&nbsp;mph" + 
+					"<br/> &nbsp;&nbsp;Exit Velo: "  + Number(d.launch_speed).toFixed(2) + "&nbsp;mph" +
+					"<br/> &nbsp;&nbsp;Launch Angle: " + Number(d.launch_vert_ang).toFixed(2) + "&deg;" + 
+					"<br/> &nbsp;&nbsp;Distance: "  + Math.sqrt(d.landing_location_x * d.landing_location_x + d.landing_location_y * d.landing_location_y).toFixed(2)  + "&nbsp;feet" +
+					"<br/> &nbsp;&nbsp;Hang Time: "  + Number(d.hang_time).toFixed(2) + "&nbsp;sec" + 
+					"<br/> &nbsp;&nbsp;Park: " + d.park + 
+					"<br/> &nbsp;&nbsp;Date: " + d.date)
+				   .style("left", (d3.event.pageX + 5) + "px")
+				   .style("top", (d3.event.pageY - 28) + "px");
+			})
+			.on("mouseout", function(d) {
+				d3.select(this).style("opacity", .7);
+				 tooltip.transition()
+					   .duration(500)
+					   .style("opacity", 0);
+			  })
+			 .style("fill",function(d){
+				if (coloring == "Result"){
+				   if (d.result_type == "single" || d.result_type == "double" || d.result_type == "triple" || d.result_type == "home_run"){
+					 return "green"
+				   }
+				   else if (d.result_type == "field_error" || d.result_type == "sac_fly" || d.result_type == "bunt" || d.result_type == "sac_bunt" || d.result_type == "catcher_interf" 
+					|| d.result_type == "fielders_choice" || d.result_type == "fielders_choice_out"){
+					return "blue"
+				   }
+				   else if (d.result_type == "field_out" || d.result_type == "force_out" || d.result_type == "double_play" || d.result_type == "double_play" || 
+					d.result_type == "grounded_into_double_play" || d.result_type == "sac_fly_double_play" || d.result_type == "double_play"){
+					return "red"
+				   }
+					else {
+					   return "black"
+					}
+				}
+				else if (coloring == "Pitch Type"){
+					if(d.pitch_type == "FT"){
+						return "pink"
+					}
+					else if (d.pitch_type == "FF"){
+						return "red"
+					}
+					else if (d.pitch_type == "FS"){
+						return "orange"
+					}
+					else if (d.pitch_type == "FC"){
+						return "yellow"
+					}
+					else if (d.pitch_type == "SI"){
+						return "lightgreen"
+					}
+					else if (d.pitch_type == "SL"){
+						return "green"
+					}
+					else if (d.pitch_type == "CU"){
+						return "lightblue"
+					}
+					else if (d.pitch_type == "CH"){
+						return "blue"
+					}
+					else if (d.pitch_type == "KC"){
+						return "purple"
+					}
+					else if (d.pitch_type == "IN"){
+						return "grey"
+					}
+					else{
+						return "black"
+					}
+				}
+				else if (coloring == "Exit Velocity"){
+					if (Number(d.launch_speed) < 50){
+						return "RGB(0,255,0)"
+					}
+					else if (Number(d.launch_speed) >= 50 && Number(d.launch_speed) < 60){
+						return "RGB(70,0,175)"
+					}
+					else if (Number(d.launch_speed) >= 60 && Number(d.launch_speed) < 70){
+						return "RGB(105,0,140)"
+					}
+					else if (Number(d.launch_speed) >= 70 && Number(d.launch_speed) < 80){
+						return "RGB(140,0,105)"
+					}
+					else if (Number(d.launch_speed) >= 80 && Number(d.launch_speed) < 90){
+						return "RGB(175,0,70)"
+					}
+					else if (Number(d.launch_speed) >= 90 && Number(d.launch_speed) < 100){
+						return "RGB(210,0,35)"
+					}
+					else if (Number(d.launch_speed) >= 100 && Number(d.launch_speed) < 110){
+						return "RGB(255,0,0)"
+					}
+					else if (Number(d.launch_speed) >= 110){
+						return "RGB(0,0,0)"
+					}
+					else {
+						return "grey"
+					}
+				}
+				else if (coloring == "Launch Angle"){
+					if (Number(d.launch_vert_ang) < -60){
+						return "RGB(0,255,0)"
+					}
+					else if (Number(d.launch_vert_ang) >= -60 && Number(d.launch_vert_ang) < -30){
+						return "RGB(0,0,255)"
+					}
+					else if (Number(d.launch_vert_ang) >= -30 && Number(d.launch_vert_ang) < 0){
+						return "RGB(85,0,170)"
+					}
+					else if (Number(d.launch_vert_ang) >= 0 && Number(d.launch_vert_ang) < 30){
+						return "RGB(170,0,85)"
+					}
+					else if (Number(d.launch_vert_ang) >= 30 && Number(d.launch_vert_ang) < 60){
+						return "RGB(255,0,0)"
+					}
+					else if (Number(d.launch_vert_ang) >= 60){
+						return "RGB(0,0,0)"
+					}
+					else {
+						return "grey"
+					}			
+				}
+				else if (coloring == "Hang Time"){
+					if (Number(d.hang_time) < 1){
+						return "RGB(0,128,0)"
+					}
+					else if (Number(d.hang_time) >= 1 && Number(d.hang_time) < 2){
+						return "RGB(0,0,255)"
+					}
+					else if (Number(d.hang_time) >= 2 && Number(d.hang_time) < 3){
+						return "RGB(50,0,200)"
+					}
+					else if (Number(d.hang_time) >= 3 && Number(d.hang_time) < 4){
+						return "RGB(100,0,150)"
+					}
+					else if (Number(d.hang_time) >= 4 && Number(d.hang_time) < 5){
+						return "RGB(150,0,100)"
+					}
+					else if (Number(d.hang_time) >= 5 && Number(d.hang_time) < 6){
+						return "RGB(200,0,50)"
+					}
+					else if (Number(d.hang_time) >= 6 && Number(d.hang_time) < 7){
+						return "RGB(255,0,0)"
+					}
+					else if (Number(d.hang_time) >= 7){
+						return "RGB(0,0,0)"
+					}
+					else {
+						return "grey"
+					}
+				}
+			});
+			/////////Radial end
+		}
+
+</script>
+  <div class="row align-items-center">
+    <div class="col-sm-2"><p id="value-range"></p></div>
+    <div class="col-sm"><div id="slider-range"></div></div>
+  </div>
+  <div class="row align-items-center">
+    <div class="col-sm-4"><p id="value-range-2"></p></div>
+    <div class="col-sm-3"><div id="slider-range-2"></div></div>
+  </div>
+  <div class="row align-items-center">
+    <div class="col-sm-6"><p id="value-range-3"></p></div>
+    <div class="col-sm-5"><div id="slider-range-3"></div></div>
+  </div>
+</body>
+</html>
